@@ -1,3 +1,5 @@
+import threading
+
 import pygame
 import tkinter as tk
 from tkinter import messagebox, simpledialog
@@ -42,13 +44,14 @@ def confirm_creation():
         world = World(int(chunk_size), seed)
         world.generate_world()
         player = Player(800 // 2, 600 // 2)
+
+        # Start the game loop in a separate thread
+        game_thread = threading.Thread(target=game_loop, args=(world, player))
+        game_thread.start()
         root.destroy()  # Destroy the creation menu
-        running = True
-        game_loop(world, player)
+
     else:
         messagebox.showerror("Invalid Input", "Please fill in the correct information.")
-
-
 
 def validate_entries(event):
     world_name = name_entry.get()

@@ -1,11 +1,10 @@
 class Inventory:
     def __init__(self):
-        self.slots = {}
+        self.slots = []
 
     def add_item(self, item, count=None):
-        if len(self.slots)>9: return
         # Check if the item already exists in inventory
-        for slot, existing_item in self.slots.items():
+        for existing_item in self.slots:
             if existing_item.id == item.id:
                 if count:
                     existing_item.count += count
@@ -15,21 +14,12 @@ class Inventory:
                     return
 
         # If not, find an empty slot or create a new one
-        slot_number = len(self.slots) + 1
-        self.slots[slot_number] = item
         if count:
-            self.slots[slot_number].count = count
-
-    def remove_item(self, slot_number, count=1):
-        if slot_number in self.slots:
-            item = self.slots[slot_number]
-            if item.count <= count:
-                del self.slots[slot_number]
-            else:
-                item.count -= count
+            item.count = count
+        self.slots.append(item)
 
     def get_item(self, slot_number):
-        return self.slots.get(slot_number, None)
+        return self.slots[slot_number]
 
     def __str__(self):
-        return '\n'.join([f"Slot {slot}: {item}" for slot, item in self.slots.items()])
+        return '\n'.join([f"Slot {slot}: {item}" for slot, item in enumerate(self.slots)])
