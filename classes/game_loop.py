@@ -4,7 +4,7 @@ import sys
 import pygame
 import tkinter as tk
 from classes.block import Blocks
-from classes.item import Items
+from classes.item import Items, Recipies
 
 # Colors
 WHITE = (255, 255, 255)
@@ -24,7 +24,8 @@ BLOCK_COLORS = {
     3: (255, 223, 0),  # Sand (Yellow)
     4: (0, 0, 0),  # Coal (Black)
     5: (50, 50, 50),  # Iron (Darker Gray)
-    6: (0, 0, 255)  # Water (Blue)
+    6: BLUE,  # Water
+    7: RED  # Workbench
 }
 
 # Define block size
@@ -38,6 +39,8 @@ CAMERA_SPEED = 2
 chunk_borders = False
 player_direction = {"Left": 0, "Right": 0, "Up": 0, "Down": 0}
 player_acceleration = pygame.Vector2(0, 0)
+
+last_selected_crafting_item = 0
 
 
 def on_key_press(event):
@@ -119,7 +122,86 @@ def game_loop(world, player):
     inventory_listbox = tk.Listbox(inventory_frame)
     for item in player.inventory.slots:
         inventory_listbox.insert(tk.END, f"{item.name}: {item.count}")
-    inventory_listbox.pack(fill=tk.BOTH, expand=True)
+    inventory_listbox.pack()
+
+    crafting_frame = tk.Frame(root)
+    crafting_frame.pack()
+    crafting_frame.pack_propagate(False)
+    crafting_frame.config(width=200, height=300)
+
+    crafting_list_frame = tk.Frame(crafting_frame)
+    crafting_list_frame.pack()
+    crafting_list_frame.pack_propagate(False)
+    crafting_list_frame.config(width=200, height=200)
+
+    crafting_button = tk.Button(inventory_frame, text='Crafting', command=lambda: crafting_frame.pack_forget() if crafting_frame.winfo_manager() else crafting_frame.pack())
+    crafting_button.pack()
+
+    # Create a scrollbar
+    scrollbar = tk.Scrollbar(crafting_frame)
+    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+    # Create a Listbox and attach the scrollbar
+    crafting_list = tk.Listbox(crafting_list_frame, yscrollcommand=scrollbar.set, width=15, height=7)
+    crafting_list.pack(side=tk.LEFT)
+    scrollbar.config(command=crafting_list.yview)
+
+    # Function to populate the Listbox
+    def populate_crafting_list():
+        for item_id in Recipies.keys():
+            item_name = Items[item_id].name  # Assuming Items dictionary is accessible
+            crafting_list.insert(tk.END, item_name)
+
+    # Populate the Listbox with craftable items
+    populate_crafting_list()
+
+    # Function to display required items
+    def display_required_items(event=None):
+        global last_selected_crafting_item  # Access the global variable
+        selected_index = crafting_list.curselection()
+        if selected_index:
+            selected_item_id = list(Recipies.keys())[selected_index[0]]
+            # Check if the selected item has changed
+            if last_selected_crafting_item != selected_item_id:
+                last_selected_crafting_item = selected_item_id  # Update the last selected item
+        if last_selected_crafting_item in Recipies.keys():
+            required_items = Recipies[last_selected_crafting_item][1]
+            # Clear the existing items in the required items Listbox
+            required_items_list.delete(0, tk.END)
+            complete = True
+            for item_id, amount in required_items:
+                item_name = Items[item_id].name  # Assuming Items dictionary is accessible
+
+                player_has_enough = False
+                for i in player.inventory.slots:
+                    if i.name == item_name and i.count >= amount:
+                        player_has_enough = True
+
+                color = "green" if player_has_enough else "red"
+                if not player_has_enough:
+                    complete = False
+                required_items_list.insert(tk.END, f"{item_name} (x{amount})")
+                required_items_list.itemconfig(tk.END, {'fg': color})
+            craft_button.config(state=tk.NORMAL if complete else tk.DISABLED)
+
+
+    # Create a Listbox for required items and attach the scrollbar
+    required_items_list = tk.Listbox(crafting_list_frame, yscrollcommand=scrollbar.set, height=7)
+    required_items_list.pack(side=tk.RIGHT)
+
+    # Attach the click event to the main crafting list
+    crafting_list.bind('<<ListboxSelect>>', display_required_items)
+
+    def confirm_craft():
+        player.inventory.add_item(Items[last_selected_crafting_item], 1)
+        for item_id, amount in Recipies[last_selected_crafting_item][1]:
+            player.inventory.remove_item(Items[item_id], amount)
+        update_inventory(player, inventory_listbox)
+        display_required_items()
+
+    craft_button = tk.Button(crafting_frame, command=confirm_craft, text='Craft', state=tk.DISABLED)
+    craft_button.pack()
+
 
     camera_offset = pygame.Vector2(0, 0)
 
@@ -143,32 +225,34 @@ def game_loop(world, player):
                         player.inventory.add_item(Items[drop_id], 1)
                     world.chunks[(chunk_x, chunk_y)].blocks[(block_x, block_y)] = Blocks[0]
                     update_inventory(player, inventory_listbox)
+                    display_required_items()
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:  # Right mouse button
-                # Get selected item from inventory
-                selected_item_index = inventory_listbox.curselection()
-                if selected_item_index:
-                    selected_item = player.inventory.slots[selected_item_index[0]]
-                    # Check if the item has a block_form_id
-                    if selected_item.block_form_id is not None:
-                        # Get the block to be placed from Blocks list
-                        block_to_place = Blocks[selected_item.block_form_id]
+                # Calculate the clicked block's position
+                clicked_x = int((event.pos[0] + camera_offset.x) // BLOCK_SIZE)
+                clicked_y = int((event.pos[1] + camera_offset.y) // BLOCK_SIZE)
 
-                        # Calculate the clicked block's position
-                        clicked_x = int((event.pos[0] + camera_offset.x) // BLOCK_SIZE)
-                        clicked_y = int((event.pos[1] + camera_offset.y) // BLOCK_SIZE)
-
-                        # Determine the chunk and block within the chunk
-                        chunk_x, chunk_y = clicked_x // 16, clicked_y // 16
-                        block_x, block_y = clicked_x % 16, clicked_y % 16
-                        if world.chunks[(chunk_x,chunk_y)].blocks[(block_x,block_y)].transparent:
+                # Determine the chunk and block within the chunk
+                chunk_x, chunk_y = clicked_x // 16, clicked_y // 16
+                block_x, block_y = clicked_x % 16, clicked_y % 16
+                if world.chunks[(chunk_x, chunk_y)].blocks[(block_x, block_y)].transparent:
+                    # Get selected item from inventory
+                    selected_item_index = inventory_listbox.curselection()
+                    if selected_item_index:
+                        selected_item = player.inventory.slots[selected_item_index[0]]
+                        # Check if the item has a block_form_id
+                        if selected_item.block_form_id is not None:
+                            # Get the block to be placed from Blocks list
+                            block_to_place = Blocks[selected_item.block_form_id]
                             if 0 <= chunk_x < world.size and 0 <= chunk_y < world.size:
                                 world.chunks[(chunk_x,chunk_y)].blocks[(block_x,block_y)]=block_to_place
-
                             # Remove one unit of the item from the inventory
                             selected_item.count -= 1
                             if selected_item.count <= 0:
                                 del player.inventory.slots[selected_item_index[0]]
                             update_inventory(player, inventory_listbox)
+                            display_required_items()
+                elif world.chunks[(chunk_x, chunk_y)].blocks[(block_x, block_y)].interact is not None:
+                    world.chunks[(chunk_x, chunk_y)].blocks[(block_x, block_y)].interact(pygame_frame, inventory_frame, player, world)
             if event.type == pygame.QUIT:
                 running = False
 
@@ -230,6 +314,7 @@ def game_loop(world, player):
         root.update()
 
     pygame.quit()
+    root.destroy()
     sys.exit()
 
 

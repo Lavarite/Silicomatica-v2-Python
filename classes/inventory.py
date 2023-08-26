@@ -18,6 +18,20 @@ class Inventory:
             item.count = count
         self.slots.append(item)
 
+    def remove_item(self, item, count=None):
+        for inv_item in self.slots:
+            if inv_item.id == item.id:
+                if count:
+                    if count < inv_item.count:
+                        inv_item.count -= count
+                    else:
+                        self.slots.remove(inv_item)
+                else:
+                    if item.count < inv_item.count:
+                        inv_item.count -= item.count
+                    else:
+                        self.slots.remove(inv_item)
+
     def get_item(self, slot_number):
         return self.slots[slot_number]
 

@@ -17,5 +17,12 @@ Items = {
     2: Item(2, "Wood", "Block", 2),
     3: Item(3, "Sand", "Block", 3),
     4: Item(4, "Coal lump", "", 4),
-    5: Item(5, "Iron lump", "", 5)
+    5: Item(5, "Iron lump", "", 5),
+    6: Item(6, "Workbench", "Block", 7),
+}
+
+Recipies = {
+    # code:
+    # item_id: ("reqs", [(item_id,amount)])
+    6: ("", [(2, 16)])
 }
