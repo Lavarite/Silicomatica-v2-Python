@@ -16,13 +16,17 @@ Items = {
     1: Item(1, "Stone", "Block", 1),
     2: Item(2, "Wood", "Block", 2),
     3: Item(3, "Sand", "Block", 3),
-    4: Item(4, "Coal lump", "", 4),
-    5: Item(5, "Iron lump", "", 5),
+    4: Item(4, "Coal lump", "Block", 4),
+    5: Item(5, "Iron lump", "Block", 5),
     6: Item(6, "Workbench", "Block", 7),
+    7: Item(7, "Furnace", "Block", 8),
+    8: Item(8, "Iron ingot", "Material", None)
 }
 
 Recipies = {
     # code:
     # item_id: ("reqs", [(item_id,amount)])
-    6: ("", [(2, 16)])
+    6: ([], [(2, 16)]),  # Workbench
+    7: ([(1, "Workbench")], [(4, 8), (1, 8)]),  # Furnace
+    8: ([(1, "Workbench"), (2, "Furnace")], [(4, 2), (5, 1)])  # Iron ingot
 }
