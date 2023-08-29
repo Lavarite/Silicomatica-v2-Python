@@ -1,7 +1,11 @@
 import socket
 import socket
+import subprocess
+
 import dill
 import select
+
+from classes.player import Player
 
 
 def send_large_data(sock, data):
@@ -58,7 +62,14 @@ def receive_large_data(sock, buffer_size=1024):
 
 
 def initialize_server(world):
+    current_id = 0
     # Initialize server
+    rule_in_name = "BuyLabour"
+    rule_out_name = "SellLabour"
+    command_in = f"netsh advfirewall firewall add rule name={rule_in_name} dir=in action=allow protocol=TCP localport={12345}"
+    command_out = f"netsh advfirewall firewall add rule name={rule_out_name} dir=out action=allow protocol=TCP localport={12345}"
+    subprocess.run(command_in, shell=True)
+    subprocess.run(command_out, shell=True)
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server_socket.bind(('0.0.0.0', 12345))
@@ -78,7 +89,12 @@ def initialize_server(world):
                 connection_list.append(sockfd)
                 print(f"Client ({addr}) connected")
 
-                send_large_data(sockfd, [0, world])
+                current_id += 1
+                new_player = Player(800//2, 600//2, current_id)
+                send_large_data(sockfd, [0, world, current_id])
+                for s in connection_list:
+                    if s != sock:
+                        send_large_data(s, [1, new_player])
 
             else:
                 try:

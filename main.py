@@ -1,5 +1,6 @@
 import re
 import socket
+import subprocess
 import threading
 
 import dill
@@ -59,13 +60,19 @@ def multiplayer_create():
     multiplayer_selection_frame.pack_forget()  # Hide the main menu
     creation_menu_frame.pack()  # Show the creation menu
 def multiplayer_join():
+    rule_in_name = "BuyLabour"
+    rule_out_name = "SellLabour"
+    command_in = f"netsh advfirewall firewall add rule name={rule_in_name} dir=in action=allow protocol=TCP localport={12345}"
+    command_out = f"netsh advfirewall firewall add rule name={rule_out_name} dir=out action=allow protocol=TCP localport={12345}"
+    subprocess.run(command_in, shell=True)
+    subprocess.run(command_out, shell=True)
     player = Player(800 // 2, 600 // 2)
     # Initialize client socket
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client_socket.settimeout(5)
     try:
         client_socket.connect((ip_entry.get(), int(port_entry.get())))
     except Exception as e:
+        print(e)
         messagebox.showerror("showerror", "Failed to connect to the server")
         return
 
@@ -75,11 +82,18 @@ def multiplayer_join():
         update_id, *update_data = data_received
         if update_id == 0:  # Initial world state
             world = update_data[0]
+            player.id = update_data[1]
             # Start the game loop in a separate thread
             game_thread = threading.Thread(target=game_loop, args=(world, player, client_socket))
             game_thread.start()
 
 def confirm_multiplayer_create():
+    rule_in_name = "BuyLabour"
+    rule_out_name = "SellLabour"
+    command_in = f"netsh advfirewall firewall add rule name={rule_in_name} dir=in action=allow protocol=TCP localport={12345}"
+    command_out = f"netsh advfirewall firewall add rule name={rule_out_name} dir=out action=allow protocol=TCP localport={12345}"
+    subprocess.run(command_in, shell=True)
+    subprocess.run(command_out, shell=True)
     world = World(int(size_entry.get()), hash(seed_entry.get()))
     world.generate_world()
     player = Player(800 // 2, 600 // 2)
@@ -98,6 +112,7 @@ def confirm_multiplayer_create():
         update_id, *update_data = data_received
         if update_id == 0:  # Initial world state
             world = update_data[0]
+            player.id = update_data[1]
             # Start the game loop in a separate thread
             game_thread = threading.Thread(target=game_loop, args=(world, player, client_socket))
             game_thread.start()

@@ -73,27 +73,27 @@ def game_loop(world, player, socket=None):
                 elif update_id == 2:  # Player disconnected
                     removed_player = update_data[0]
                     for p in server_players:
-                        if p.color == removed_player.color:
+                        if p.id == removed_player.id:
                             server_players.remove(p)
                     print("player disconnected")
 
                 elif update_id == 3:  # Player Movement
                     player_data = update_data[0]
                     # Update player position and other state
-                    if player_data.color != player.color:
+                    if player_data.id != player.id:
                         for p in server_players:
-                            if p.color == player_data.color:
+                            if p.id == player_data.id:
                                 server_players.remove(p)
                                 server_players.append(player_data)
                                 return
                         server_players.append(player_data)
 
                 elif update_id == 4:  # Block Alteration
-                    chunk_x, chunk_y = update_data[0], update_data[1]
-                    block_x, block_y = update_data[2], update_data[3]
-                    block_data = update_data[4]
+                    chunk_x, chunk_y = update_data[0]
+                    block_x, block_y = update_data[1]
+                    block_data = update_data[2]
                     # Update block in the world
-                    world.chunks[chunk_x][chunk_y].blocks[block_x][block_y] = block_data
+                    world.chunks[(chunk_x, chunk_y)].blocks[(block_x, block_y)] = block_data
 
     if socket:
         receive_thread = threading.Thread(target=unpack_data)
@@ -276,10 +276,6 @@ def game_loop(world, player, socket=None):
 
     running = True
     while running:
-
-        if socket and any(player.color == p.color for p in server_players):
-            while any(player.color == p.color for p in server_players):
-                player.color = (random.randint(0, 25) * 10, random.randint(0, 25) * 10, random.randint(0, 25) * 10)
 
         update_inventory(player, inventory_listbox)
         display_required_items()
