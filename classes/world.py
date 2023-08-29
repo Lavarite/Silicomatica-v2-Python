@@ -40,3 +40,4 @@ class World:
                 if (min_val is None or noise_val > min_val) and (max_val is None or noise_val <= max_val):
                     return block_id
         return 0  # Default to air (ID=0) if no match
+

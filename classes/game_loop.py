@@ -1,10 +1,15 @@
 import os
+import random
+import threading
+
+import dill
 import sys
 
 import pygame
 import tkinter as tk
 from classes.block import Blocks
 from classes.item import Items, Recipies
+from classes.server import send_large_data, receive_large_data
 
 # Colors
 WHITE = (255, 255, 255)
@@ -26,7 +31,7 @@ BLOCK_COLORS = {
     5: (50, 50, 50),  # Iron (Darker Gray)
     6: BLUE,  # Water
     7: RED,  # Workbench
-    8: GREEN # Furnace
+    8: GREEN  # Furnace
 }
 
 # Define block size
@@ -44,9 +49,57 @@ player_acceleration = pygame.Vector2(0, 0)
 last_selected_crafting_item = 0
 
 
+def game_loop(world, player, socket=None):
+
+    server_players = []
+
+    def unpack_data():
+        while True:
+            data_received = receive_large_data(socket)
+            if data_received:
+                # Extract ID and serialized data
+                update_id, *update_data = data_received
+                if update_id == 0:  # Global world alteration
+                    new_world = update_data[0]
+                    world.size = new_world.size
+                    world.seed = new_world.seed
+                    world.chunks = new_world.chunks
+
+                elif update_id == 1:  # Player connected
+                    new_player = update_data[0]
+                    server_players.append(new_player)
+                    print("player connected")
+
+                elif update_id == 2:  # Player disconnected
+                    removed_player = update_data[0]
+                    for p in server_players:
+                        if p.color == removed_player.color:
+                            server_players.remove(p)
+                    print("player disconnected")
+
+                elif update_id == 3:  # Player Movement
+                    player_data = update_data[0]
+                    # Update player position and other state
+                    if player_data.color != player.color:
+                        for p in server_players:
+                            if p.color == player_data.color:
+                                server_players.remove(p)
+                                server_players.append(player_data)
+                                return
+                        server_players.append(player_data)
+
+                elif update_id == 4:  # Block Alteration
+                    chunk_x, chunk_y = update_data[0], update_data[1]
+                    block_x, block_y = update_data[2], update_data[3]
+                    block_data = update_data[4]
+                    # Update block in the world
+                    world.chunks[chunk_x][chunk_y].blocks[block_x][block_y] = block_data
+
+    if socket:
+        receive_thread = threading.Thread(target=unpack_data)
+        receive_thread.start()
 
 
-def game_loop(world, player):
     def on_key_press(event):
         global chunk_borders, player_acceleration  # Make sure to access the global variables
 
@@ -94,7 +147,7 @@ def game_loop(world, player):
                     break
 
     root = tk.Tk()
-    root.geometry(f"{WIDTH+400}x{HEIGHT}")
+    root.geometry(f"{WIDTH + 400}x{HEIGHT}")
     root.title("slavery")
     root.bind("<KeyPress>", on_key_press)  # Bind key press event
     root.bind("<KeyRelease>", on_key_release)  # Bind key release event
@@ -127,7 +180,8 @@ def game_loop(world, player):
     crafting_list_frame = tk.Frame(crafting_frame)
     crafting_list_frame.pack()
 
-    crafting_button = tk.Button(inventory_frame, text='Crafting', command=lambda: crafting_frame.pack_forget() if crafting_frame.winfo_manager() else crafting_frame.pack())
+    crafting_button = tk.Button(inventory_frame, text='Crafting',
+                                command=lambda: crafting_frame.pack_forget() if crafting_frame.winfo_manager() else crafting_frame.pack())
     crafting_button.pack()
 
     # Create a scrollbar
@@ -166,10 +220,12 @@ def game_loop(world, player):
                     player_pos = pygame.Vector2((player.position.x // 50), (player.position.y // 50))
                     block_pos = pygame.Vector2(player_pos.x + dx, player_pos.y + dy)
                     if int(block_pos.x) in range(0, world.size * 16) and int(block_pos.y) in range(0, world.size * 16):
-                        block = world.chunks[int(block_pos.x // 16), int(block_pos.y // 16)].blocks[block_pos.x % 16, block_pos.y % 16]
+                        block = world.chunks[int(block_pos.x // 16), int(block_pos.y // 16)].blocks[
+                            block_pos.x % 16, block_pos.y % 16]
                         if block.type:
                             try:
-                                if any(rs[0] == int(block.type.split()[2]) for rs in required_stations) and block.type.split()[:2] == ["Crafting", "station"]:
+                                if any(rs[0] == int(block.type.split()[2]) for rs in
+                                       required_stations) and block.type.split()[:2] == ["Crafting", "station"]:
                                     present_stations.append((int(block.type.split()[2]), block.name))
                             except IndexError or ValueError:
                                 continue
@@ -201,7 +257,6 @@ def game_loop(world, player):
                 required_items_list.itemconfig(tk.END, {'fg': color})
             craft_button.config(state=tk.NORMAL if complete else tk.DISABLED)
 
-
     # Create a Listbox for required items and attach the scrollbar
     required_items_list = tk.Listbox(crafting_list_frame, yscrollcommand=scrollbar.set, width=30)
     required_items_list.pack(side=tk.RIGHT)
@@ -217,11 +272,14 @@ def game_loop(world, player):
     craft_button = tk.Button(crafting_frame, command=confirm_craft, text='Craft', state=tk.DISABLED)
     craft_button.pack()
 
-
     camera_offset = pygame.Vector2(0, 0)
 
     running = True
     while running:
+
+        if socket and any(player.color == p.color for p in server_players):
+            while any(player.color == p.color for p in server_players):
+                player.color = (random.randint(0, 25) * 10, random.randint(0, 25) * 10, random.randint(0, 25) * 10)
 
         update_inventory(player, inventory_listbox)
         display_required_items()
@@ -244,6 +302,9 @@ def game_loop(world, player):
                         player.inventory.add_item(Items[drop_id], 1)
                     world.chunks[(chunk_x, chunk_y)].blocks[(block_x, block_y)] = Blocks[0]
 
+                    if socket:
+                        send_large_data(socket, [4, (chunk_x, chunk_y), (block_x, block_y), Blocks[0]])
+
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:  # Right mouse button
                 # Calculate the clicked block's position
                 clicked_x = int((event.pos[0] + camera_offset.x) // BLOCK_SIZE)
@@ -262,14 +323,19 @@ def game_loop(world, player):
                             # Get the block to be placed from Blocks list
                             block_to_place = Blocks[selected_item.block_form_id]
                             if 0 <= chunk_x < world.size and 0 <= chunk_y < world.size:
-                                world.chunks[(chunk_x,chunk_y)].blocks[(block_x,block_y)]=block_to_place
+                                world.chunks[(chunk_x, chunk_y)].blocks[(block_x, block_y)] = block_to_place
+
+                                if socket:
+                                    send_large_data(socket, [4, (chunk_x, chunk_y), (block_x, block_y), block_to_place])
+
                             # Remove one unit of the item from the inventory
                             selected_item.count -= 1
                             if selected_item.count <= 0:
                                 del player.inventory.slots[selected_item_index[0]]
 
                 elif world.chunks[(chunk_x, chunk_y)].blocks[(block_x, block_y)].interact is not None:
-                    world.chunks[(chunk_x, chunk_y)].blocks[(block_x, block_y)].interact(pygame_frame, inventory_frame, player, world)
+                    world.chunks[(chunk_x, chunk_y)].blocks[(block_x, block_y)].interact(pygame_frame, inventory_frame,
+                                                                                         player, world)
             if event.type == pygame.QUIT:
                 running = False
 
@@ -279,6 +345,8 @@ def game_loop(world, player):
         player.velocity *= (1 - DRAG)
 
         player.position += player.velocity
+        if socket:
+            send_large_data(socket, [3, player])
 
         # Constrain player within borders
         player.position.x = max(0, min(world.size * 800 - PLAYER_SIZE, player.position.x))
@@ -315,16 +383,20 @@ def game_loop(world, player):
 
         # Draw chunk borders
         if chunk_borders:
-            for x in range(0, (world.size+1) * 16 * BLOCK_SIZE, 16 * BLOCK_SIZE):
+            for x in range(0, (world.size + 1) * 16 * BLOCK_SIZE, 16 * BLOCK_SIZE):
                 pygame.draw.line(screen, GREEN, (x - camera_offset.x, 0 - camera_offset.y),
                                  (x - camera_offset.x, world.size * 16 * BLOCK_SIZE - camera_offset.y), 5)
-            for y in range(0, (world.size+1) * 16 * BLOCK_SIZE, 16 * BLOCK_SIZE):
+            for y in range(0, (world.size + 1) * 16 * BLOCK_SIZE, 16 * BLOCK_SIZE):
                 pygame.draw.line(screen, GREEN, (0 - camera_offset.x, y - camera_offset.y),
                                  (world.size * 16 * BLOCK_SIZE - camera_offset.x, y - camera_offset.y), 5)
 
-        # Draw player
-        pygame.draw.rect(screen, RED, (player.position.x - camera_offset.x, player.position.y - camera_offset.y,
-                                       PLAYER_SIZE, PLAYER_SIZE))
+        # Draw players
+        pygame.draw.rect(screen, player.color,
+                         (player.position.x - camera_offset.x, player.position.y - camera_offset.y,
+                          PLAYER_SIZE, PLAYER_SIZE))
+        for p in server_players:
+            pygame.draw.rect(screen, p.color, (p.position.x - camera_offset.x, p.position.y - camera_offset.y,
+                                               PLAYER_SIZE, PLAYER_SIZE))
 
         pygame.display.flip()
         clock.tick(60)
@@ -333,5 +405,3 @@ def game_loop(world, player):
     pygame.quit()
     root.destroy()
     sys.exit()
-
-

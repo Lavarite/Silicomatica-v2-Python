@@ -8,3 +8,4 @@ class Player:
         self.position = pygame.Vector2(x, y)
         self.velocity = pygame.Vector2(0, 0)
         self.inventory = Inventory()
+        self.color = (100, 100, 200)
