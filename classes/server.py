@@ -1,6 +1,7 @@
 import socket
 import socket
 import subprocess
+import sys
 
 import dill
 import select
@@ -64,12 +65,6 @@ def receive_large_data(sock, buffer_size=1024):
 def initialize_server(world):
     current_id = 0
     # Initialize server
-    rule_in_name = "BuyLabour"
-    rule_out_name = "SellLabour"
-    command_in = f"netsh advfirewall firewall add rule name={rule_in_name} dir=in action=allow protocol=TCP localport={12345}"
-    command_out = f"netsh advfirewall firewall add rule name={rule_out_name} dir=out action=allow protocol=TCP localport={12345}"
-    subprocess.run(command_in, shell=True)
-    subprocess.run(command_out, shell=True)
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server_socket.bind(('0.0.0.0', 12345))
@@ -77,6 +72,7 @@ def initialize_server(world):
 
     # List to keep track of socket descriptors
     connection_list = [server_socket]
+    players = []
 
     print("Server started on port 12345")
 
@@ -91,18 +87,29 @@ def initialize_server(world):
 
                 current_id += 1
                 new_player = Player(800//2, 600//2, current_id)
-                send_large_data(sockfd, [0, world, current_id])
+                players.append(new_player)
+                send_large_data(sockfd, [0, world, new_player])
                 for s in connection_list:
-                    if s != sock:
-                        send_large_data(s, [1, new_player])
+                    if s != server_socket:
+                        send_large_data(s, [1, players])
+
+                print(f"current id: {current_id}")
 
             else:
                 try:
                     data_received = receive_large_data(sock)
                     if data_received:
+                        # Forward the data to all other connected clients
+                        for client_sock in connection_list:
+                            if client_sock != server_socket and client_sock != sock:
+                                send_large_data(client_sock, data_received)
+                                if data_received[0] == 4:
+                                    print("sent data")
+
                         update_id, *update_data = data_received
 
                         if update_id == 4:
+                            print(f"server: {data_received}")
                             x1, y1 = update_data[0]
                             x2, y2 = update_data[1]
                             block_type = update_data[2]
@@ -110,10 +117,6 @@ def initialize_server(world):
                             # Access
                             world.chunks[(x1, y1)].blocks[(x2, y2)] = block_type
 
-                        # Forward the data to all other connected clients
-                        for client_sock in connection_list:
-                            if client_sock != server_socket and client_sock != sock:
-                                send_large_data(client_sock, data_received)
 
                 except Exception as e:
                     print(f"An error occurred: {e}")
@@ -123,3 +126,9 @@ def initialize_server(world):
                     if sock in connection_list:
                         print(f"Removing ({sock})")
                         connection_list.remove(sock)
+
+        if connection_list == [server_socket]:
+            print("closing")
+            server_socket.close()
+            sys.exit()
+

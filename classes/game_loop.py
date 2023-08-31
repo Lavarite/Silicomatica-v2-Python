@@ -1,8 +1,6 @@
 import os
-import random
 import threading
 
-import dill
 import sys
 
 import pygame
@@ -51,52 +49,60 @@ last_selected_crafting_item = 0
 
 def game_loop(world, player, socket=None):
 
-    server_players = []
+    players = []
 
     def unpack_data():
+        nonlocal players
         while True:
-            data_received = receive_large_data(socket)
-            if data_received:
-                # Extract ID and serialized data
-                update_id, *update_data = data_received
-                if update_id == 0:  # Global world alteration
-                    new_world = update_data[0]
-                    world.size = new_world.size
-                    world.seed = new_world.seed
-                    world.chunks = new_world.chunks
+            try:
+                data_received = receive_large_data(socket)
+                if data_received:
 
-                elif update_id == 1:  # Player connected
-                    new_player = update_data[0]
-                    server_players.append(new_player)
-                    print("player connected")
+                    # Extract ID and serialized data
+                    update_id, *update_data = data_received
+                    if update_id == 0:  # Global world alteration
+                        new_world = update_data[0]
+                        world.size = new_world.size
+                        world.seed = new_world.seed
+                        world.chunks = new_world.chunks
 
-                elif update_id == 2:  # Player disconnected
-                    removed_player = update_data[0]
-                    for p in server_players:
-                        if p.id == removed_player.id:
-                            server_players.remove(p)
-                    print("player disconnected")
+                    elif update_id == 1:  # Player connected
+                        new_players = update_data[0]
+                        players = new_players[:]
+                        for p in players:
+                            if p.id == player.id:
+                                players.remove(p)
 
-                elif update_id == 3:  # Player Movement
-                    player_data = update_data[0]
-                    # Update player position and other state
-                    if player_data.id != player.id:
-                        for p in server_players:
-                            if p.id == player_data.id:
-                                server_players.remove(p)
-                                server_players.append(player_data)
-                                return
-                        server_players.append(player_data)
+                        print("player connected")
 
-                elif update_id == 4:  # Block Alteration
-                    chunk_x, chunk_y = update_data[0]
-                    block_x, block_y = update_data[1]
-                    block_data = update_data[2]
-                    # Update block in the world
-                    world.chunks[(chunk_x, chunk_y)].blocks[(block_x, block_y)] = block_data
+                    elif update_id == 2:  # Player disconnected
+                        removed_player = update_data[0]
+                        for p in players:
+                            if p.id == removed_player.id:
+                                players.remove(p)
+                        print("player disconnected")
+
+                    elif update_id == 3:  # Player Movement
+                        new_player = update_data[0]
+                        # Update player position and other state
+                        if new_player.id != player.id:
+                            for p in players:
+                                if p.id == new_player.id:
+                                    players.remove(p)
+                                    players.append(new_player)
+
+                    elif update_id == 4:  # Block Alteration
+                        chunk_x, chunk_y = update_data[0]
+                        block_x, block_y = update_data[1]
+                        block_data = update_data[2]
+                        # Update block in the world
+                        world.chunks[(chunk_x, chunk_y)].blocks[(block_x, block_y)] = block_data
+            except Exception as e:
+                print(e)
 
     if socket:
         receive_thread = threading.Thread(target=unpack_data)
+        receive_thread.daemon = True
         receive_thread.start()
 
 
@@ -275,6 +281,7 @@ def game_loop(world, player, socket=None):
     camera_offset = pygame.Vector2(0, 0)
 
     running = True
+
     while running:
 
         update_inventory(player, inventory_listbox)
@@ -390,8 +397,10 @@ def game_loop(world, player, socket=None):
         pygame.draw.rect(screen, player.color,
                          (player.position.x - camera_offset.x, player.position.y - camera_offset.y,
                           PLAYER_SIZE, PLAYER_SIZE))
-        for p in server_players:
-            pygame.draw.rect(screen, p.color, (p.position.x - camera_offset.x, p.position.y - camera_offset.y,
+
+        for p in players:
+            if p.id != player.id:
+                pygame.draw.rect(screen, p.color, (p.position.x - camera_offset.x, p.position.y - camera_offset.y,
                                                PLAYER_SIZE, PLAYER_SIZE))
 
         pygame.display.flip()
