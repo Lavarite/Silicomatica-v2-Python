@@ -15,8 +15,8 @@ from classes.server import initialize_server, receive_large_data, send_large_dat
 from classes.world import World
 
 elevate(False)
-rule_in_name = "BuyLabour"
-rule_out_name = "SellLabour"
+rule_in_name = "Multiplayer In"
+rule_out_name = "Multiplayer Out"
 command_in = f"netsh advfirewall firewall add rule name={rule_in_name} dir=in action=allow protocol=TCP localport={12345}"
 command_out = f"netsh advfirewall firewall add rule name={rule_out_name} dir=out action=allow protocol=TCP localport={12345}"
 subprocess.run(command_in, shell=True)
