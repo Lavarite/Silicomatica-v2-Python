@@ -3,6 +3,7 @@ import socket
 import subprocess
 import threading
 
+from elevate import elevate
 import dill
 import pygame
 import tkinter as tk
@@ -13,6 +14,7 @@ from classes.player import Player
 from classes.server import initialize_server, receive_large_data, send_large_data
 from classes.world import World
 
+elevate(False)
 rule_in_name = "BuyLabour"
 rule_out_name = "SellLabour"
 command_in = f"netsh advfirewall firewall add rule name={rule_in_name} dir=in action=allow protocol=TCP localport={12345}"

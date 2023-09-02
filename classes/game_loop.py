@@ -238,7 +238,7 @@ def game_loop(world, player, socket=None, players=None):
 
     root = tk.Tk()
     root.geometry(f"{WIDTH + 400}x{HEIGHT}")
-    root.title("slavery")
+    root.title("Game Window")
     root.bind("<KeyPress>", on_key_press)  # Bind key press event
     root.bind("<KeyRelease>", on_key_release)  # Bind key release event
     root.protocol("WM_DELETE_WINDOW", on_closing)
