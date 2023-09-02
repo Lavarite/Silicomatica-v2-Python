@@ -4,9 +4,10 @@ from classes.chunk import Chunk
 
 
 class World:
-    def __init__(self, size, seed):
+    def __init__(self, size, seed, name=""):
         self.size = size
         self.seed = seed
+        self.name = name
         self.perlin = PerlinNoise(seed=self.seed)
 
         # Define noise value thresholds for different block types

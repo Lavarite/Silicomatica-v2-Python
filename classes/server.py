@@ -62,7 +62,7 @@ def receive_large_data(sock, buffer_size=1024):
     return original_data
 
 
-def initialize_server(world):
+def initialize_server(world, players=None):
     current_id = 0
     # Initialize server
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -72,7 +72,8 @@ def initialize_server(world):
 
     # List to keep track of socket descriptors
     connection_list = [server_socket]
-    players = []
+    if not players:
+        players = []
 
     print("Server started on port 12345")
 
@@ -86,12 +87,8 @@ def initialize_server(world):
                 print(f"Client ({addr}) connected")
 
                 current_id += 1
-                new_player = Player(800//2, 600//2, current_id)
-                players.append(new_player)
-                send_large_data(sockfd, [0, world, new_player])
-                for s in connection_list:
-                    if s != server_socket:
-                        send_large_data(s, [1, players])
+
+                send_large_data(sockfd, [0, world, players])
 
                 print(f"current id: {current_id}")
 
@@ -103,19 +100,31 @@ def initialize_server(world):
                         for client_sock in connection_list:
                             if client_sock != server_socket and client_sock != sock:
                                 send_large_data(client_sock, data_received)
-                                if data_received[0] == 4:
-                                    print("sent data")
 
                         update_id, *update_data = data_received
 
                         if update_id == 4:
-                            print(f"server: {data_received}")
                             x1, y1 = update_data[0]
                             x2, y2 = update_data[1]
                             block_type = update_data[2]
 
                             # Access
                             world.chunks[(x1, y1)].blocks[(x2, y2)] = block_type
+
+                        if update_id == -1:
+                            new_player = update_data[0]
+                            players.append(new_player)
+
+                            for s in connection_list:
+                                if s != server_socket:
+                                    send_large_data(s, [1, players])
+
+                        if update_id == -2:
+                            print("closing")
+                            for s in connection_list:
+                                if s != server_socket:
+                                    send_large_data(s, [-404, ""])
+                            sys.exit()
 
 
                 except Exception as e:
@@ -131,4 +140,3 @@ def initialize_server(world):
             print("closing")
             server_socket.close()
             sys.exit()
-

@@ -2,12 +2,17 @@ import os
 import threading
 
 import sys
+from queue import Queue
+from tkinter import filedialog
 
+import dill
 import pygame
 import tkinter as tk
 from classes.block import Blocks
 from classes.item import Items, Recipies
 from classes.server import send_large_data, receive_large_data
+
+queue = Queue()
 
 # Colors
 WHITE = (255, 255, 255)
@@ -47,9 +52,14 @@ player_acceleration = pygame.Vector2(0, 0)
 last_selected_crafting_item = 0
 
 
-def game_loop(world, player, socket=None):
+def game_loop(world, player, socket=None, players=None):
 
-    players = []
+    if not players:
+        players = []
+    else:
+        for p in players:
+            if p.id == player.id:
+                players.remove(p)
 
     def unpack_data():
         nonlocal players
@@ -60,7 +70,10 @@ def game_loop(world, player, socket=None):
 
                     # Extract ID and serialized data
                     update_id, *update_data = data_received
-                    if update_id == 0:  # Global world alteration
+                    if update_id == -2:
+                        socket.close()
+                        return
+                    elif update_id == 0:  # Global world alteration
                         new_world = update_data[0]
                         world.size = new_world.size
                         world.seed = new_world.seed
@@ -97,14 +110,18 @@ def game_loop(world, player, socket=None):
                         block_data = update_data[2]
                         # Update block in the world
                         world.chunks[(chunk_x, chunk_y)].blocks[(block_x, block_y)] = block_data
+
+                    elif update_id == -404:
+                        on_closing()
+                        sys.exit()
+
             except Exception as e:
-                print(e)
+                continue
 
     if socket:
         receive_thread = threading.Thread(target=unpack_data)
         receive_thread.daemon = True
         receive_thread.start()
-
 
     def on_key_press(event):
         global chunk_borders, player_acceleration  # Make sure to access the global variables
@@ -152,11 +169,86 @@ def game_loop(world, player, socket=None):
                     inventory_listbox.select_set(i)
                     break
 
+    def on_closing():
+        nonlocal running
+        if socket:
+            send_large_data(socket, [-2, ""])
+            socket.close()
+        running = False
+        pygame.quit()
+        sys.exit()
+
+    save_location = ""
+
+    def save_world():
+        def sw():
+            save_root = tk.Tk()
+            save_root.geometry("400x300")
+
+            save_frame = tk.Frame(save_root, width=400, height=300)
+            save_frame.pack()
+
+            save_label = tk.Label(save_frame, text="Save world")
+            save_label.pack(pady=5)
+
+            selected_location_label = tk.Label(save_frame, text=f"Selected location: {save_location}")
+            selected_location_label.pack(pady=5)
+
+            def select_save_location():
+                nonlocal save_location
+                save_location = filedialog.askdirectory()
+                selected_location_label.config(text=f"Selected location: {save_location}")
+                if save_location != "":
+                    save_world_button.config(state=tk.NORMAL)
+                else:
+                    save_world_button.config(state=tk.DISABLED)
+
+            select_location_button = tk.Button(save_frame, text="Select save location", command=select_save_location)
+            select_location_button.pack(pady=5)
+
+            def save():
+                try:
+                    with open(save_location + f"/{world.name}.wrd", 'wb') as file:
+                        dill.dump(world, file)
+                        save_players = players[:]
+                        save_players.append(player)
+                        dill.dump(save_players, file)
+                        file.close()
+                except Exception as e:
+                    print(e)
+
+                for e in save_frame.winfo_children():
+                    e.destroy()
+                saved_label = tk.Label(save_frame, text="The world has been successfully saved!")
+                saved_label.pack(pady=5)
+                exit_buttom_saved = tk.Button(save_frame, text="Exit", command=sys.exit)
+                exit_buttom_saved.pack(pady=5)
+
+            save_world_button = tk.Button(save_frame, text="Save", command=save, state=tk.DISABLED)
+            save_world_button.pack(pady=5)
+
+            cancel_button = tk.Button(save_frame, text="Cancel", command=save_root.destroy)
+            cancel_button.pack(pady=5)
+
+            save_root.mainloop()
+
+        sw_thread = threading.Thread(target=sw)
+        sw_thread.daemon = True
+        sw_thread.start()
+
     root = tk.Tk()
     root.geometry(f"{WIDTH + 400}x{HEIGHT}")
     root.title("slavery")
     root.bind("<KeyPress>", on_key_press)  # Bind key press event
     root.bind("<KeyRelease>", on_key_release)  # Bind key release event
+    root.protocol("WM_DELETE_WINDOW", on_closing)
+
+    menu_bar = tk.Menu(root)
+    root.config(menu=menu_bar)
+    menu = tk.Menu(menu_bar, tearoff=0)
+    menu_bar.add_cascade(label="Menu", menu=menu)
+    menu.add_command(label="Save", command=save_world)
+    menu.add_command(label="Quit", command=on_closing)
 
     pygame_frame = tk.Frame(root, width=WIDTH, height=HEIGHT)
     pygame_frame.pack(side=tk.LEFT)
@@ -174,14 +266,15 @@ def game_loop(world, player, socket=None):
     clock = pygame.time.Clock()
     pygame.init()
 
+    player_id_label = tk.Label(inventory_frame, text=f"Player ID: {player.id}")
+    player_id_label.pack()
     # Listbox for displaying inventory
-    inventory_listbox = tk.Listbox(inventory_frame)
+    inventory_listbox = tk.Listbox(inventory_frame, selectmode="none")
     for item in player.inventory.slots:
         inventory_listbox.insert(tk.END, f"{item.name}: {item.count}")
     inventory_listbox.pack()
 
     crafting_frame = tk.Frame(root, width=400)
-    crafting_frame.pack()
 
     crafting_list_frame = tk.Frame(crafting_frame)
     crafting_list_frame.pack()
@@ -195,7 +288,7 @@ def game_loop(world, player, socket=None):
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
     # Create a Listbox and attach the scrollbar
-    crafting_list = tk.Listbox(crafting_list_frame, yscrollcommand=scrollbar.set, width=20)
+    crafting_list = tk.Listbox(crafting_list_frame, yscrollcommand=scrollbar.set, width=20, selectmode="none")
     crafting_list.pack(side=tk.LEFT)
     scrollbar.config(command=crafting_list.yview)
 
@@ -401,7 +494,7 @@ def game_loop(world, player, socket=None):
         for p in players:
             if p.id != player.id:
                 pygame.draw.rect(screen, p.color, (p.position.x - camera_offset.x, p.position.y - camera_offset.y,
-                                               PLAYER_SIZE, PLAYER_SIZE))
+                                                   PLAYER_SIZE, PLAYER_SIZE))
 
         pygame.display.flip()
         clock.tick(60)
