@@ -1,7 +1,7 @@
 # Silicomatica-v2
 
 More versions of this project:
-[v1](https://github.com/Lavarite/Silicomatica-v1-Python) & [v3-3D](https://github.com/Lavarite/Silicomatica-3D>)
+[v1](https://github.com/Lavarite/Silicomatica-v1-Python) & [v3-3D](https://github.com/Lavarite/Silicomatica-3D)
 
 Features of this version: 
  - Pygame implementation
